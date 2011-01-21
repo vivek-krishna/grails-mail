@@ -187,12 +187,16 @@ class MailMessageBuilder {
     
     void from(CharSequence from) {
         Assert.hasText(from, "from cannot be null or 0 length")
-        MailConfig mailConfig = MailConfig.findByUsername(from.toString())
+        String fromAddress = from.toString()
+        if(fromAddress.contains("<")){
+            fromAddress = fromAddress.substring(fromAddress.indexOf("<") + 1, fromAddress.indexOf(">"))
+        }
+        MailConfig mailConfig = MailConfig.findByUsername(fromAddress)
         if(mailConfig){
             this.mailSenderCustom = generateMailSender(mailConfig)
             createMessage()
         }
-        getMessage().from = from.toString()
+        getMessage().from = fromAddress
     }
 
     private MailSender generateMailSender(MailConfig mailConfig){
