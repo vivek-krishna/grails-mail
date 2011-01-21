@@ -37,8 +37,7 @@ import org.springframework.util.Assert
 class MailMessageBuilder {
 
     private log = LogFactory.getLog(MailMessageBuilder)
-    
-    final MailSender mailSender
+    MailSender mailSenderCustom
     final MailMessageContentRenderer mailMessageContentRenderer
     
     final String defaultFrom
@@ -63,7 +62,7 @@ class MailMessageBuilder {
     }
 
     MailMessageBuilder(MailSender mailSender, ConfigObject config, MailMessageContentRenderer mailMessageContentRenderer = null) {
-        this.mailSender = mailSender
+        this.mailSenderCustom = mailSender
         this.mailMessageContentRenderer = mailMessageContentRenderer
         
         this.overrideAddress = config.overrideAddress ?: null
@@ -73,21 +72,26 @@ class MailMessageBuilder {
 
     private MailMessage getMessage() {
         if (!message) {
-            if (mimeCapable) {
-                helper = new MimeMessageHelper(mailSender.createMimeMessage(), multipart)
-                message = new MimeMailMessage(helper)
-            } else {
-                message = new SimpleMailMessage()
-            }
-            
-            message.from = defaultFrom
-
-            if (defaultTo) {
-                message.setTo(defaultTo)
-            }
+            createMessage()
         }
         
         message
+    }
+
+    private MailMessage createMessage(){
+        if (mimeCapable) {
+            helper = new MimeMessageHelper(mailSenderCustom.createMimeMessage(), multipart)
+            message = new MimeMailMessage(helper)
+        } else {
+            message = new SimpleMailMessage()
+        }
+
+        message.from = defaultFrom
+
+        if (defaultTo) {
+            message.setTo(defaultTo)
+        }
+        return message
     }
 
     MailMessage sendMessage() {
@@ -96,8 +100,7 @@ class MailMessageBuilder {
         if (log.traceEnabled) {
             log.trace("Sending mail ${getDescription(message)}} ...")
         }
-        
-        mailSender.send(message instanceof MimeMailMessage ? message.mimeMessage : message)
+        mailSenderCustom.send(message instanceof MimeMailMessage ? message.mimeMessage : message)
         
         if (log.traceEnabled) {
             log.trace("Sent mail ${getDescription(message)}} ...")
@@ -138,21 +141,20 @@ class MailMessageBuilder {
     void to(Object[] args) {
         Assert.notEmpty(args, "to cannot be null or empty")
         Assert.noNullElements(args, "to cannot contain null elements") 
-        
         getMessage().setTo(toDestinationAddresses(args))
     }
     
     void to(List args) {
         Assert.notEmpty(args, "to cannot be null or empty")
         Assert.noNullElements(args.toArray(), "to cannot contain null elements")
-        
+
         to(*args)
     }
     
     void bcc(Object[] args) {
         Assert.notEmpty(args, "bcc cannot be null or empty")
-        Assert.noNullElements(args, "bcc cannot contain null elements") 
-        
+        Assert.noNullElements(args, "bcc cannot contain null elements")
+
         getMessage().setBcc(toDestinationAddresses(args))
     }
     
@@ -185,8 +187,31 @@ class MailMessageBuilder {
     
     void from(CharSequence from) {
         Assert.hasText(from, "from cannot be null or 0 length")
-        
+        MailConfig mailConfig = MailConfig.findByUsername(from.toString())
+        if(mailConfig){
+            this.mailSenderCustom = generateMailSender(mailConfig)
+            createMessage()
+        }
         getMessage().from = from.toString()
+    }
+
+    private MailSender generateMailSender(MailConfig mailConfig){
+        JavaMailSenderImpl mailSender = new JavaMailSenderImpl()
+        mailSender.host = mailConfig.host
+        mailSender.port = mailConfig.port
+        mailSender.username = mailConfig.username
+        mailSender.password = mailConfig.password
+        mailSender.defaultEncoding = 'utf-8'
+        List propertiesList = mailConfig.props?.tokenize(",")
+        if(propertiesList) {
+            List subList = propertiesList*.tokenize(":")
+            Map propertiesMap = [:]
+            subList.each{
+                propertiesMap[it.get(0)] = it.get(1)
+            }
+            mailSender.javaMailProperties = propertiesMap
+        }
+        return mailSender
     }
     
     void title(CharSequence title) {
@@ -197,13 +222,13 @@ class MailMessageBuilder {
     
     void subject(CharSequence title) {
         Assert.notNull(title, "subject cannot be null")
-        
+
         getMessage().subject = title.toString()
     }
         
     void body(CharSequence body) {
         Assert.notNull(body, "body cannot be null")
-        
+
         text(body)
     }
     
@@ -349,7 +374,7 @@ class MailMessageBuilder {
     }
     
     boolean isMimeCapable() {
-        mailSender instanceof JavaMailSender
+        mailSenderCustom instanceof JavaMailSender
     }
     
     protected String[] toDestinationAddresses(addresses) {
@@ -403,3 +428,4 @@ class MailMessageBuilder {
     }
     
 }
+
