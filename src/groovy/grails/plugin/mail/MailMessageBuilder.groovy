@@ -73,6 +73,20 @@ class MailMessageBuilder {
     private MailMessage getMessage() {
         if (!message) {
             createMessage()
+            if (mimeCapable) {
+                helper = new MimeMessageHelper(mailSender.createMimeMessage(), multipart)
+                message = new MimeMailMessage(helper)
+            } else {
+                message = new SimpleMailMessage()
+            }
+            
+            if (defaultFrom) {
+                message.from = defaultFrom
+            }
+
+            if (defaultTo) {
+                message.setTo(defaultTo)
+            }
         }
         
         message
@@ -423,11 +437,6 @@ class MailMessageBuilder {
         }
         
         message.sentDate = new Date()
-        
-        if (mimeCapable) {
-/*            message.mimeMessage.saveChanges()*/
-        }
-        
         message
     }
     
