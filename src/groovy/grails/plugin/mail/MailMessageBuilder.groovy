@@ -27,6 +27,7 @@ import javax.mail.Message
 import javax.mail.internet.MimeUtility
 
 import org.springframework.util.Assert
+import org.codehaus.groovy.grails.commons.ApplicationHolder
 
 /**
  * Provides a DSL style interface to mail message sending/generation.
@@ -62,7 +63,7 @@ class MailMessageBuilder {
     }
 
     MailMessageBuilder(MailSender mailSender, ConfigObject config, MailMessageContentRenderer mailMessageContentRenderer = null) {
-        this.mailSenderCustom = mailSender
+        this.mailSenderCustom = getDefaultCustomMailSender(mailSender)
         this.mailMessageContentRenderer = mailMessageContentRenderer
         
         this.overrideAddress = config.overrideAddress ?: null
@@ -70,23 +71,27 @@ class MailMessageBuilder {
         this.defaultTo = overrideAddress ?: (config.default.to ?: null)
     }
 
+    private MailSender getDefaultCustomMailSender(JavaMailSenderImpl mailSender){
+        JavaMailSenderImpl mailSenderCustom = new JavaMailSenderImpl()
+        mailSenderCustom.host = mailSender.host
+        mailSenderCustom.port = mailSender.port
+        mailSenderCustom.username = mailSender.username
+        mailSenderCustom.password = mailSender.password
+        mailSenderCustom.defaultEncoding = 'utf-8'
+        Properties propertiesList = mailSender.javaMailProperties
+        if(propertiesList) {
+            Map propertiesMap = [:]
+            propertiesList.each{key, value->
+                propertiesMap[key] = value
+            }
+            mailSenderCustom.javaMailProperties = propertiesMap
+        }
+        return mailSenderCustom
+
+    }
     private MailMessage getMessage() {
         if (!message) {
             createMessage()
-            if (mimeCapable) {
-                helper = new MimeMessageHelper(mailSender.createMimeMessage(), multipart)
-                message = new MimeMailMessage(helper)
-            } else {
-                message = new SimpleMailMessage()
-            }
-            
-            if (defaultFrom) {
-                message.from = defaultFrom
-            }
-
-            if (defaultTo) {
-                message.setTo(defaultTo)
-            }
         }
         
         message
@@ -94,6 +99,7 @@ class MailMessageBuilder {
 
     private MailMessage createMessage(){
         if (mimeCapable) {
+            println this.multipart
             helper = new MimeMessageHelper(mailSenderCustom.createMimeMessage(), multipart)
             message = new MimeMailMessage(helper)
         } else {
@@ -205,7 +211,7 @@ class MailMessageBuilder {
         if(fromAddress.contains("<")){
             fromAddress = fromAddress.substring(fromAddress.indexOf("<") + 1, fromAddress.indexOf(">"))
         }
-        MailConfig mailConfig = MailConfig.findByUsername(fromAddress)
+        MailConfig mailConfig = ApplicationHolder.application.getClassForName("grails.plugin.mail.MailConfig").findByUsername(fromAddress)
         if(mailConfig){
             this.mailSenderCustom = generateMailSender(mailConfig)
             createMessage()
